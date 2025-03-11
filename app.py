@@ -330,19 +330,48 @@ def analyze_stock():
         except Exception as e:
             return jsonify({'error': f"Error processing stock data: {str(e)}"}), 500
         
-        # Generate plots
+        # Generate plots (keep for backward compatibility)
         signals_plot = generator.plot_signals()
         returns_plot = generator.plot_returns()
         
         # Get performance summary
         summary = generator.summarize_performance()
         
+        # Extract data for interactive charts
+        returns = generator.calculate_returns()
+        
+        # Convert dates to string format for JSON serialization
+        dates = [date.strftime('%Y-%m-%d') for date in returns.index]
+        
+        # Get buy and sell signals
+        buy_signals = generator.signals.loc[generator.signals['position'] == 1.0]
+        sell_signals = generator.signals.loc[generator.signals['position'] == -1.0]
+        
+        # Prepare data for frontend
+        chart_data = {
+            'dates': dates,
+            'prices': returns['price'].tolist(),
+            'short_ma': returns[f'SMA_{short_window}'].tolist(),
+            'long_ma': returns[f'SMA_{long_window}'].tolist(),
+            'buy_signals': {
+                'dates': [date.strftime('%Y-%m-%d') for date in buy_signals.index],
+                'prices': buy_signals['price'].tolist()
+            },
+            'sell_signals': {
+                'dates': [date.strftime('%Y-%m-%d') for date in sell_signals.index],
+                'prices': sell_signals['price'].tolist()
+            },
+            'market_returns': returns['cumulative_market_return'].tolist(),
+            'strategy_returns': returns['cumulative_strategy_return'].tolist()
+        }
+        
         # Return the results
         return jsonify({
             'success': True,
             'summary': summary,
-            'signals_plot': signals_plot,
-            'returns_plot': returns_plot
+            'signals_plot': signals_plot,  # Keep for backward compatibility
+            'returns_plot': returns_plot,  # Keep for backward compatibility
+            **chart_data  # Include all chart data
         })
     
     except Exception as e:
