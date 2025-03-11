@@ -1,3 +1,6 @@
+import matplotlib
+matplotlib.use('Agg')  # Set the backend to non-interactive Agg before importing pyplot
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pandas as pd
@@ -197,6 +200,11 @@ class StockSignalGenerator:
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
         
+        # Format x-axis dates for better readability
+        date_format = DateFormatter('%Y-%m-%d')
+        ax.xaxis.set_major_formatter(date_format)
+        plt.xticks(rotation=45)
+        
         # Save plot to a BytesIO object
         buffer = io.BytesIO()
         plt.savefig(buffer, format='png', dpi=100)
@@ -225,10 +233,18 @@ class StockSignalGenerator:
         # Add labels and title
         plt.title(f'{self.ticker} Cumulative Returns: Strategy vs. Market')
         plt.xlabel('Date')
-        plt.ylabel('Cumulative Return')
+        plt.ylabel('Cumulative Return (%)')
         plt.legend()
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
+        
+        # Format x-axis dates for better readability
+        date_format = DateFormatter('%Y-%m-%d')
+        ax.xaxis.set_major_formatter(date_format)
+        plt.xticks(rotation=45)
+        
+        # Format y-axis as percentage
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: '{:.0%}'.format(y)))
         
         # Save plot to a BytesIO object
         buffer = io.BytesIO()
@@ -294,7 +310,10 @@ def analyze_stock():
         # Validate inputs
         if not ticker:
             return jsonify({'error': 'Ticker symbol is required'}), 400
-        
+            
+        if short_window >= long_window:
+            return jsonify({'error': 'Short-term window must be smaller than long-term window'}), 400
+            
         # Create signal generator
         generator = StockSignalGenerator(
             ticker=ticker,
@@ -302,9 +321,14 @@ def analyze_stock():
             end_date=end_date
         )
         
-        # Fetch data and generate signals
-        generator.fetch_data()
-        generator.generate_signals(short_window, long_window)
+        try:
+            # Fetch data and generate signals
+            generator.fetch_data()
+            generator.generate_signals(short_window, long_window)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 404
+        except Exception as e:
+            return jsonify({'error': f"Error processing stock data: {str(e)}"}), 500
         
         # Generate plots
         signals_plot = generator.plot_signals()
@@ -327,18 +351,33 @@ def analyze_stock():
 
 @app.route('/api/stocks', methods=['GET'])
 def get_popular_stocks():
-    # List of popular stocks
+    # Expanded list of popular stocks to match autocomplete functionality in React
     popular_stocks = [
         {"symbol": "AAPL", "name": "Apple Inc."},
         {"symbol": "MSFT", "name": "Microsoft Corporation"},
-        {"symbol": "GOOGL", "name": "Alphabet Inc."},
+        {"symbol": "GOOGL", "name": "Alphabet Inc. (Google)"},
         {"symbol": "AMZN", "name": "Amazon.com Inc."},
         {"symbol": "TSLA", "name": "Tesla, Inc."},
-        {"symbol": "META", "name": "Meta Platforms, Inc."},
+        {"symbol": "META", "name": "Meta Platforms, Inc. (Facebook)"},
         {"symbol": "NVDA", "name": "NVIDIA Corporation"},
         {"symbol": "JPM", "name": "JPMorgan Chase & Co."},
         {"symbol": "V", "name": "Visa Inc."},
-        {"symbol": "JNJ", "name": "Johnson & Johnson"}
+        {"symbol": "JNJ", "name": "Johnson & Johnson"},
+        {"symbol": "WMT", "name": "Walmart Inc."},
+        {"symbol": "PG", "name": "Procter & Gamble Co."},
+        {"symbol": "MA", "name": "Mastercard Inc."},
+        {"symbol": "UNH", "name": "UnitedHealth Group Inc."},
+        {"symbol": "HD", "name": "Home Depot Inc."},
+        {"symbol": "DIS", "name": "Walt Disney Co."},
+        {"symbol": "BAC", "name": "Bank of America Corp."},
+        {"symbol": "INTC", "name": "Intel Corporation"},
+        {"symbol": "VZ", "name": "Verizon Communications Inc."},
+        {"symbol": "CSCO", "name": "Cisco Systems Inc."},
+        {"symbol": "ADBE", "name": "Adobe Inc."},
+        {"symbol": "NFLX", "name": "Netflix Inc."},
+        {"symbol": "CRM", "name": "Salesforce Inc."},
+        {"symbol": "KO", "name": "Coca-Cola Co."},
+        {"symbol": "PEP", "name": "PepsiCo Inc."}
     ]
     
     return jsonify(popular_stocks)
@@ -346,6 +385,34 @@ def get_popular_stocks():
 @app.route('/api/health', methods=['GET'])
 def health_check():
     return jsonify({'status': 'healthy'})
+
+@app.route('/api/stock-info/<ticker>', methods=['GET'])
+def get_stock_info(ticker):
+    """Get basic information about a stock"""
+    try:
+        ticker = ticker.upper()
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        # Extract relevant information
+        basic_info = {
+            'symbol': ticker,
+            'name': info.get('shortName', 'Unknown'),
+            'sector': info.get('sector', 'Unknown'),
+            'industry': info.get('industry', 'Unknown'),
+            'marketCap': info.get('marketCap', 0),
+            'currentPrice': info.get('currentPrice', 0),
+            'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', 0),
+            'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 0),
+            'averageVolume': info.get('averageVolume', 0),
+            'dividendYield': info.get('dividendYield', 0) * 100 if info.get('dividendYield') else 0,
+            'beta': info.get('beta', 0)
+        }
+        
+        return jsonify(basic_info)
+    
+    except Exception as e:
+        return jsonify({'error': f"Could not fetch stock info: {str(e)}"}), 404
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
