@@ -13,6 +13,8 @@ import base64
 import json
 from matplotlib.dates import DateFormatter
 
+
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
